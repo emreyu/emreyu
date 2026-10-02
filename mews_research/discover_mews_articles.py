@@ -123,7 +123,14 @@ async def expand(page, max_clicks=60):
             btn = page.get_by_text(more)
         if await btn.count() == 0 or not await btn.first.is_visible():
             return
-        await btn.first.click()
+        try:
+            await btn.first.click(timeout=10_000)
+        except Exception:
+            # Something (sticky banner, overlay) covers the button: click it via JS.
+            try:
+                await btn.first.dispatch_event("click")
+            except Exception:
+                return  # keep whatever has loaded so far
         await page.wait_for_timeout(1500)
 
 

@@ -28,9 +28,13 @@ from playwright.async_api import async_playwright
 from discover_mews_articles import DELAY_S, UA, dismiss_cookies, goto
 
 # Candidate containers for the article body, most specific first.
+# Salesforce Knowledge renders rich text with Aura (uiOutputRichText) or LWC.
 BODY_SELECTORS = [
+    ".uiOutputRichText",
     "lightning-formatted-rich-text",
     ".slds-rich-text-editor__output",
+    "[class*='article-body']",
+    "[class*='articleBody']",
     "article",
     "main",
 ]
@@ -43,6 +47,40 @@ OUTER_HTML_JS = """e => {
   if (e.shadowRoot) parts.push(e.shadowRoot.innerHTML);
   parts.push(e.innerHTML);
   return {html: parts.join('\\n'), text: (e.innerText || e.textContent || '').trim()};
+}"""
+
+
+# Fallback when no selector matches: score every element by the text of the
+# paragraphs/list items below it (piercing open shadow roots) and keep the best
+# one outside header/nav/footer - a tiny "readability" heuristic.
+DENSEST_BLOCK_JS = """() => {
+  const SKIP = /^(NAV|HEADER|FOOTER|ASIDE|SCRIPT|STYLE|NOSCRIPT|FORM|BUTTON)$/;
+  const blocks = [];
+  const walk = root => {
+    root.querySelectorAll('p, li, td, pre, h2, h3, h4').forEach(e => blocks.push(e));
+    root.querySelectorAll('*').forEach(e => { if (e.shadowRoot) walk(e.shadowRoot); });
+  };
+  walk(document);
+  const up = e => e.parentElement || (e.parentNode && e.parentNode.host) || null;
+  const scores = new Map();
+  for (const b of blocks) {
+    const len = (b.textContent || '').trim().length;
+    if (len < 25) continue;
+    let w = 1;
+    for (let a = up(b), d = 0; a && d < 3; a = up(a), d++, w /= 2) {
+      scores.set(a, (scores.get(a) || 0) + len * w);
+    }
+  }
+  let best = null, bestScore = 0;
+  for (const [el, sc] of scores) {
+    if (sc <= bestScore) continue;
+    let skip = false;
+    for (let a = el; a; a = up(a)) if (SKIP.test(a.tagName || '')) { skip = true; break; }
+    if (!skip) { best = el; bestScore = sc; }
+  }
+  if (!best) return {html: '', text: ''};
+  const html = (best.shadowRoot ? best.shadowRoot.innerHTML + '\\n' : '') + best.innerHTML;
+  return {html, text: (best.innerText || best.textContent || '').trim()};
 }"""
 
 
@@ -71,6 +109,10 @@ async def extract(page):
                 body_html, best_len = r["html"], len(r["text"])
         if best_len >= MIN_BODY_CHARS:
             break  # a specific selector worked; don't fall back to the whole page
+    if best_len < MIN_BODY_CHARS:
+        r = await page.evaluate(DENSEST_BLOCK_JS)
+        if len(r["text"]) > best_len:
+            body_html, best_len = r["html"], len(r["text"])
 
     title = ""
     h1 = page.locator("h1")
@@ -93,8 +135,19 @@ async def extract(page):
     return title, body_html, last_modified
 
 
+async def save_debug(page, debug_dir, slug):
+    """Keep the rendered page so a failed extraction can be inspected."""
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        (debug_dir / f"{slug}.html").write_text(await page.content(), encoding="utf-8")
+        await page.screenshot(path=str(debug_dir / f"{slug}.png"), full_page=True)
+    except Exception as e:
+        print(f"    (could not save debug files: {e})")
+
+
 async def run(rows, out_dir, headed):
     errors = []
+    debug_dir = out_dir.parent / "debug"
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=not headed)
         ctx = await browser.new_context(user_agent=UA, locale="en-US")
@@ -108,16 +161,17 @@ async def run(rows, out_dir, headed):
                 if not cookies_done:
                     await dismiss_cookies(page)
                     cookies_done = True
-                for sel in BODY_SELECTORS[:2]:
-                    try:
-                        await page.locator(sel).first.wait_for(timeout=8000)
-                        break
-                    except Exception:
-                        pass
+                try:  # wait for any known body container, not each one in turn
+                    await page.locator(", ".join(BODY_SELECTORS[:5])).first.wait_for(timeout=15_000)
+                except Exception:
+                    pass
                 title, html, last_modified = await extract(page)
                 body = to_markdown(html) if html else ""
                 if len(body) < 50:
-                    raise RuntimeError("article body not found or empty")
+                    await save_debug(page, debug_dir, slug)
+                    raise RuntimeError(
+                        f"article body not found (page saved to {debug_dir}/{slug}.html/.png)"
+                    )
                 meta = {
                     "url": row["url"],
                     "slug": slug,
