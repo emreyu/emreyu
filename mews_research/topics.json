@@ -1,0 +1,32 @@
+{
+  "payments": {
+    "keywords": ["payment", "payments", "terminal", "deposit", "refund", "chargeback", "card", "preauthorization", "payment request", "Mews Payments"],
+    "tags": ["payment"],
+    "exclude": [],
+    "min_score": 5
+  },
+  "reservations_distribution": {
+    "keywords": ["reservation", "reservations", "booking engine", "channel manager", "rate", "rates", "availability", "restriction", "allotment", "group booking"],
+    "tags": ["reservation", "distribution", "booking", "rate"],
+    "exclude": [],
+    "min_score": 5
+  },
+  "integrations_api": {
+    "keywords": ["integration", "integrations", "API", "marketplace", "connector", "webhook", "Open API", "partner"],
+    "tags": ["integration", "marketplace", "api"],
+    "exclude": [],
+    "min_score": 5
+  },
+  "guest_journey": {
+    "keywords": ["check-in", "check-out", "kiosk", "guest portal", "online check-in", "guest profile", "messaging", "email template"],
+    "tags": ["guest", "check-in", "kiosk"],
+    "exclude": [],
+    "min_score": 5
+  },
+  "accounting_reporting": {
+    "keywords": ["accounting", "report", "reports", "ledger", "invoice", "bill", "revenue", "tax", "closing", "export"],
+    "tags": ["accounting", "report", "finance"],
+    "exclude": [],
+    "min_score": 5
+  }
+}
