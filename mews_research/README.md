@@ -12,10 +12,18 @@ Three stages, run in order from this folder:
 
 ```bash
 cd mews_research
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python3 -m venv .venv                # Windows: py -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 playwright install chromium
 ```
+
+Once the environment is active, `python` and `pip` point to it, so the commands below work as written.
+Every new terminal window needs `cd mews_research && source .venv/bin/activate` again before running the scripts.
+
+**Python not found?**
+- Mac: macOS has no `python` command, only `python3`. Check with `python3 --version`. If that fails, install Python from <https://www.python.org/downloads/> (or `brew install python` if you use Homebrew).
+- Windows: install Python from <https://www.python.org/downloads/> and tick "Add python.exe to PATH" in the installer.
 
 ## Run
 
